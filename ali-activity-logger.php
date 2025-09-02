@@ -3,7 +3,7 @@
 Plugin Name: Ali Activity Logs
 Plugin URI: https://example.com/user-activity-logger
 Description: Ghi lại các hoạt động của người dùng như đăng nhập, đăng xuất, và chỉnh sửa bài viết với thông tin chi tiết.
-Version: 2.8
+Version: 2.9
 Author: Gemini
 Author URI: https://gemini.google.com
 License: GPL2
@@ -16,11 +16,17 @@ if (!defined('ABSPATH')) {
 
 /**
  * Hàm kích hoạt plugin.
- * Đăng ký loại bài viết tùy chỉnh và xóa các quy tắc viết lại.
+ * Đăng ký loại bài viết tùy chỉnh, xóa các quy tắc viết lại và thêm quyền hạn.
  */
 function ual_activate_plugin() {
     ual_register_activity_log_post_type();
     flush_rewrite_rules();
+
+    // Thêm quyền hạn 'ual_view_logs' cho vai trò Quản trị viên
+    $role = get_role('administrator');
+    if ($role) {
+        $role->add_cap('ual_view_logs');
+    }
 
     // Lên lịch tác vụ dọn dẹp nhật ký hàng ngày
     if (!wp_next_scheduled('ual_daily_log_cleanup')) {
@@ -35,6 +41,12 @@ register_activation_hook(__FILE__, 'ual_activate_plugin');
  */
 function ual_deactivate_plugin() {
     wp_clear_scheduled_hook('ual_daily_log_cleanup');
+    
+    // Xóa quyền hạn 'ual_view_logs' khỏi vai trò Quản trị viên
+    $role = get_role('administrator');
+    if ($role) {
+        $role->remove_cap('ual_view_logs');
+    }
 }
 register_deactivation_hook(__FILE__, 'ual_deactivate_plugin');
 
@@ -109,7 +121,7 @@ function ual_add_admin_menu_page() {
     add_menu_page(
         'Ali Activity Logs',         // Tiêu đề trang
         'Ali Activity Logs',         // Tên menu
-        'manage_options',             // Yêu cầu quyền
+        'ual_view_logs',              // Yêu cầu quyền
         'user-activity-logger',       // Slug của menu
         'ual_render_admin_page',       // Hàm hiển thị nội dung trang
         'dashicons-clipboard',
@@ -121,7 +133,7 @@ function ual_add_admin_menu_page() {
         'user-activity-logger',
         'Cài đặt Ali Activity Logs',
         'Cài đặt',
-        'manage_options',
+        'ual_view_logs',
         'ual-settings',
         'ual_settings_page'
     );
@@ -132,6 +144,10 @@ add_action('admin_menu', 'ual_add_admin_menu_page');
  * Hàm hiển thị trang quản trị.
  */
 function ual_render_admin_page() {
+    if (!current_user_can('ual_view_logs')) {
+        wp_die(__('Bạn không có quyền truy cập trang này.'));
+    }
+
     if (!class_exists('WP_List_Table')) {
         require_once(ABSPATH . 'wp-admin/includes/class-wp-list-table.php');
     }
@@ -384,6 +400,11 @@ function ual_log_activity($event_type, $message, $user_id, $severity = 'info', $
     if (empty($user_id)) {
         return;
     }
+    
+    // Tránh ghi nhật ký các bản nháp tự động hoặc sự kiện log của chính plugin
+    if (strpos($event_type, 'ual') === 0 || strpos($object_name, 'ual') === 0) {
+        return;
+    }
 
     $user_info = get_userdata($user_id);
     $user_name = $user_info ? $user_info->user_login : 'Người dùng không xác định';
@@ -566,6 +587,9 @@ function ual_log_retention_days_callback() {
  * Hàm hiển thị trang cài đặt.
  */
 function ual_settings_page() {
+    if (!current_user_can('ual_view_logs')) {
+        wp_die(__('Bạn không có quyền truy cập trang này.'));
+    }
     ?>
     <div class="wrap">
         <h2>Cài đặt Ali Activity Logs</h2>
