@@ -3,9 +3,9 @@
 Plugin Name: Ali Activity Logs
 Plugin URI: https://example.com/user-activity-logger
 Description: Ghi lại các hoạt động của người dùng như đăng nhập, đăng xuất, và chỉnh sửa bài viết với thông tin chi tiết.
-Version: 2.4
-Author: Ali
-Author URI: https://vucao.org
+Version: 2.6
+Author: Gemini
+Author URI: https://gemini.google.com
 License: GPL2
 */
 
@@ -58,12 +58,14 @@ add_action('init', 'ual_register_activity_log_post_type');
  */
 function ual_add_admin_menu_page() {
     // Thêm trang chính của plugin vào menu "Công cụ"
-    add_management_page(
+    add_menu_page(
         'Ali Activity Logs',         // Tiêu đề trang
         'Ali Activity Logs',         // Tên menu
         'manage_options',             // Yêu cầu quyền
         'user-activity-logger',       // Slug của menu
-        'ual_render_admin_page'       // Hàm hiển thị nội dung trang
+        'ual_render_admin_page',       // Hàm hiển thị nội dung trang
+        'dashicons-clipboard',
+        4
     );
     
     // Thêm trang cài đặt như một menu con
@@ -153,7 +155,19 @@ class UAL_List_Table extends WP_List_Table {
             case 'object':
                 return $item['object'];
             case 'message':
-                return $item['message'];
+                // Rút gọn tin nhắn nếu quá dài
+                $full_message = $item['message'];
+                $short_message = $full_message;
+                $read_more_link = '';
+
+                if (strlen($full_message) > 100) {
+                    $short_message = substr($full_message, 0, 100) . '...';
+                    $read_more_link = '<a href="#" class="ual-read-more">Xem thêm</a>';
+                }
+
+                return '<span class="ual-truncated-message">' . esc_html($short_message) . '</span>'
+                     . '<span class="ual-full-message" style="display:none;">' . esc_html($full_message) . '</span>'
+                     . $read_more_link;
             default:
                 return print_r($item, true);
         }
@@ -402,9 +416,9 @@ function ual_settings_page() {
     <?php
 }
 
-// Thêm CSS để định dạng bảng
-function ual_add_admin_styles() {
-    echo '
+// Thêm CSS và JavaScript để định dạng bảng và xử lý sự kiện
+function ual_add_admin_assets() {
+    ?>
     <style>
         .ual-list-table {
             width: 100%;
@@ -419,6 +433,55 @@ function ual_add_admin_styles() {
         .ual-severity.ual-danger {
             color: #ff0000;
         }
-    </style>';
+        .ual-truncated-message, .ual-read-more {
+            display: inline;
+        }
+        .ual-full-message {
+            display: none;
+        }
+        .ual-read-more, .ual-hide-message {
+            cursor: pointer;
+            color: #0073aa;
+            text-decoration: underline;
+            margin-left: 5px;
+        }
+    </style>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Sử dụng một selector cụ thể để tránh xung đột
+            const table = document.querySelector('.ual-list-table');
+            if (table) {
+                table.addEventListener('click', function(event) {
+                    const target = event.target;
+                    if (target.classList.contains('ual-read-more') || target.classList.contains('ual-hide-message')) {
+                        event.preventDefault();
+                        const row = target.closest('td');
+                        if (row) {
+                            const truncatedSpan = row.querySelector('.ual-truncated-message');
+                            const fullSpan = row.querySelector('.ual-full-message');
+                            const link = target;
+
+                            if (truncatedSpan.style.display === 'none') {
+                                // Đang hiển thị đầy đủ, chuyển sang rút gọn
+                                truncatedSpan.style.display = 'inline';
+                                fullSpan.style.display = 'none';
+                                link.textContent = 'Xem thêm';
+                                link.classList.remove('ual-hide-message');
+                                link.classList.add('ual-read-more');
+                            } else {
+                                // Đang rút gọn, chuyển sang hiển thị đầy đủ
+                                truncatedSpan.style.display = 'none';
+                                fullSpan.style.display = 'inline';
+                                link.textContent = 'Thu gọn';
+                                link.classList.remove('ual-read-more');
+                                link.classList.add('ual-hide-message');
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    </script>
+    <?php
 }
-add_action('admin_head', 'ual_add_admin_styles');
+add_action('admin_head', 'ual_add_admin_assets');
