@@ -3,7 +3,7 @@
 Plugin Name: Ali Activity Logs
 Plugin URI: https://example.com/user-activity-logger
 Description: Ghi lại các hoạt động của người dùng như đăng nhập, đăng xuất, và chỉnh sửa bài viết với thông tin chi tiết.
-Version: 2.7
+Version: 2.8
 Author: Gemini
 Author URI: https://gemini.google.com
 License: GPL2
@@ -21,8 +21,56 @@ if (!defined('ABSPATH')) {
 function ual_activate_plugin() {
     ual_register_activity_log_post_type();
     flush_rewrite_rules();
+
+    // Lên lịch tác vụ dọn dẹp nhật ký hàng ngày
+    if (!wp_next_scheduled('ual_daily_log_cleanup')) {
+        wp_schedule_event(time(), 'daily', 'ual_daily_log_cleanup');
+    }
 }
 register_activation_hook(__FILE__, 'ual_activate_plugin');
+
+/**
+ * Hàm hủy kích hoạt plugin.
+ * Hủy bỏ tác vụ dọn dẹp đã lên lịch.
+ */
+function ual_deactivate_plugin() {
+    wp_clear_scheduled_hook('ual_daily_log_cleanup');
+}
+register_deactivation_hook(__FILE__, 'ual_deactivate_plugin');
+
+/**
+ * Hàm dọn dẹp các bản ghi cũ.
+ */
+function ual_cleanup_old_logs() {
+    $retention_days = get_option('ual_log_retention_days', 0);
+    
+    // Nếu không có ngày lưu trữ được thiết lập hoặc bằng 0, không làm gì cả.
+    if (empty($retention_days) || $retention_days <= 0) {
+        return;
+    }
+
+    $args = array(
+        'post_type'      => 'activity_log',
+        'post_status'    => 'publish',
+        'posts_per_page' => -1,
+        'date_query'     => array(
+            array(
+                'before'    => $retention_days . ' days ago',
+                'inclusive' => true,
+            ),
+        ),
+        'fields'         => 'ids',
+    );
+
+    $old_logs = get_posts($args);
+
+    if ($old_logs) {
+        foreach ($old_logs as $log_id) {
+            wp_delete_post($log_id, true);
+        }
+    }
+}
+add_action('ual_daily_log_cleanup', 'ual_cleanup_old_logs');
 
 /**
  * Đăng ký loại bài viết tùy chỉnh 'activity_log'.
@@ -463,6 +511,12 @@ function ual_settings_init() {
         'default' => true,
         'sanitize_callback' => 'rest_sanitize_boolean'
     ));
+    
+    register_setting('ual_settings_group', 'ual_log_retention_days', array(
+        'type' => 'integer',
+        'default' => 30,
+        'sanitize_callback' => 'absint'
+    ));
 
     add_settings_section(
         'ual_main_settings_section',
@@ -478,6 +532,14 @@ function ual_settings_init() {
         'ual-settings',
         'ual_main_settings_section'
     );
+    
+    add_settings_field(
+        'ual_log_retention_days_field',
+        'Thời gian lưu nhật ký (ngày)',
+        'ual_log_retention_days_callback',
+        'ual-settings',
+        'ual_main_settings_section'
+    );
 }
 add_action('admin_init', 'ual_settings_init');
 
@@ -489,6 +551,15 @@ function ual_logging_enabled_callback() {
     echo '<label for="ual_logging_enabled_field">';
     echo '<input type="checkbox" name="ual_logging_enabled" id="ual_logging_enabled_field" value="1" ' . checked(true, $is_enabled, false) . ' />';
     echo 'Bật chức năng ghi nhật ký hoạt động của người dùng.</label>';
+}
+
+/**
+ * Hàm callback để hiển thị trường nhập số ngày.
+ */
+function ual_log_retention_days_callback() {
+    $days = get_option('ual_log_retention_days', 30);
+    echo '<input type="number" name="ual_log_retention_days" id="ual_log_retention_days_field" value="' . esc_attr($days) . '" min="0" step="1" />';
+    echo '<p class="description">Số ngày để lưu trữ nhật ký. Sau thời gian này, các bản ghi cũ sẽ tự động bị xóa. Nhập 0 để lưu trữ vĩnh viễn.</p>';
 }
 
 /**
