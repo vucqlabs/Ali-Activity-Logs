@@ -3,7 +3,7 @@
 Plugin Name: Ali Activity Logs
 Plugin URI: https://example.com/user-activity-logger
 Description: Ghi lại các hoạt động của người dùng như đăng nhập, đăng xuất, và chỉnh sửa bài viết với thông tin chi tiết.
-Version: 2.6
+Version: 2.7
 Author: Gemini
 Author URI: https://gemini.google.com
 License: GPL2
@@ -92,7 +92,7 @@ function ual_render_admin_page() {
     ?>
     <div class="wrap">
         <h2>Nhật ký Hoạt động Người dùng</h2>
-        <form method="post">
+        <form method="get">
             <input type="hidden" name="page" value="<?php echo $_REQUEST['page']; ?>" />
             <?php $list_table->display(); ?>
         </form>
@@ -172,6 +172,66 @@ class UAL_List_Table extends WP_List_Table {
                 return print_r($item, true);
         }
     }
+    
+    /**
+     * Hiển thị các bộ lọc tùy chỉnh trên bảng.
+     */
+    function extra_tablenav($which) {
+        if ('top' === $which) {
+            // Lấy danh sách người dùng đã ghi nhật ký
+            $users = get_users();
+            $logged_event_types = array(
+                'Đăng nhập'          => 'Đăng nhập',
+                'Đăng xuất'          => 'Đăng xuất',
+                'Tạo mới post'       => 'Tạo mới bài viết',
+                'Tạo mới page'       => 'Tạo mới trang',
+                'Chỉnh sửa post'     => 'Chỉnh sửa bài viết',
+                'Chỉnh sửa page'     => 'Chỉnh sửa trang',
+                'Thay đổi cài đặt'   => 'Thay đổi cài đặt'
+            );
+            $severities = array(
+                'info'    => 'Thông tin',
+                'warning' => 'Cảnh báo',
+                'danger'  => 'Nguy hiểm'
+            );
+            
+            ?>
+            <div class="alignleft actions">
+                <select name="ual_user_filter" id="ual_user_filter">
+                    <option value="">Tất cả Người dùng</option>
+                    <?php
+                    $current_user = isset($_GET['ual_user_filter']) ? $_GET['ual_user_filter'] : '';
+                    foreach ($users as $user) {
+                        echo '<option value="' . esc_attr($user->ID) . '"' . selected($current_user, $user->ID) . '>' . esc_html($user->user_login) . '</option>';
+                    }
+                    ?>
+                </select>
+
+                <select name="ual_event_type_filter" id="ual_event_type_filter">
+                    <option value="">Tất cả Sự kiện</option>
+                    <?php
+                    $current_event = isset($_GET['ual_event_type_filter']) ? $_GET['ual_event_type_filter'] : '';
+                    foreach ($logged_event_types as $key => $value) {
+                        echo '<option value="' . esc_attr($key) . '"' . selected($current_event, $key) . '>' . esc_html($value) . '</option>';
+                    }
+                    ?>
+                </select>
+
+                <select name="ual_severity_filter" id="ual_severity_filter">
+                    <option value="">Tất cả Mức độ</option>
+                    <?php
+                    $current_severity = isset($_GET['ual_severity_filter']) ? $_GET['ual_severity_filter'] : '';
+                    foreach ($severities as $key => $value) {
+                        echo '<option value="' . esc_attr($key) . '"' . selected($current_severity, $key) . '>' . esc_html($value) . '</option>';
+                    }
+                    ?>
+                </select>
+
+                <?php submit_button('Lọc', 'secondary', false, false); ?>
+            </div>
+            <?php
+        }
+    }
 
     function prepare_items() {
         $per_page = 20;
@@ -191,6 +251,39 @@ class UAL_List_Table extends WP_List_Table {
             'orderby'        => 'date',
             'order'          => 'DESC'
         );
+
+        $meta_query = array();
+
+        // Xử lý bộ lọc người dùng
+        if (isset($_GET['ual_user_filter']) && !empty($_GET['ual_user_filter'])) {
+            $meta_query[] = array(
+                'key'     => '_ual_user_id',
+                'value'   => sanitize_text_field($_GET['ual_user_filter']),
+                'compare' => '=',
+            );
+        }
+
+        // Xử lý bộ lọc loại sự kiện
+        if (isset($_GET['ual_event_type_filter']) && !empty($_GET['ual_event_type_filter'])) {
+            $meta_query[] = array(
+                'key'     => '_ual_event_type',
+                'value'   => sanitize_text_field($_GET['ual_event_type_filter']),
+                'compare' => '=',
+            );
+        }
+
+        // Xử lý bộ lọc mức độ nghiêm trọng
+        if (isset($_GET['ual_severity_filter']) && !empty($_GET['ual_severity_filter'])) {
+            $meta_query[] = array(
+                'key'     => '_ual_severity',
+                'value'   => sanitize_text_field($_GET['ual_severity_filter']),
+                'compare' => '=',
+            );
+        }
+
+        if (!empty($meta_query)) {
+            $args['meta_query'] = $meta_query;
+        }
 
         $query = new WP_Query($args);
         $total_items = $query->found_posts;
@@ -449,32 +542,25 @@ function ual_add_admin_assets() {
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             // Sử dụng một selector cụ thể để tránh xung đột
-            const table = document.querySelector('.ual-list-table');
+            const table = document.querySelector('.wp-list-table');
             if (table) {
                 table.addEventListener('click', function(event) {
                     const target = event.target;
-                    if (target.classList.contains('ual-read-more') || target.classList.contains('ual-hide-message')) {
+                    if (target.classList.contains('ual-read-more')) {
                         event.preventDefault();
                         const row = target.closest('td');
                         if (row) {
                             const truncatedSpan = row.querySelector('.ual-truncated-message');
                             const fullSpan = row.querySelector('.ual-full-message');
-                            const link = target;
-
-                            if (truncatedSpan.style.display === 'none') {
-                                // Đang hiển thị đầy đủ, chuyển sang rút gọn
-                                truncatedSpan.style.display = 'inline';
-                                fullSpan.style.display = 'none';
-                                link.textContent = 'Xem thêm';
-                                link.classList.remove('ual-hide-message');
-                                link.classList.add('ual-read-more');
-                            } else {
-                                // Đang rút gọn, chuyển sang hiển thị đầy đủ
+                            
+                            if (fullSpan.style.display === 'none') {
                                 truncatedSpan.style.display = 'none';
                                 fullSpan.style.display = 'inline';
-                                link.textContent = 'Thu gọn';
-                                link.classList.remove('ual-read-more');
-                                link.classList.add('ual-hide-message');
+                                target.textContent = 'Thu gọn';
+                            } else {
+                                truncatedSpan.style.display = 'inline';
+                                fullSpan.style.display = 'none';
+                                target.textContent = 'Xem thêm';
                             }
                         }
                     }
