@@ -1,9 +1,9 @@
 <?php
 /*
-Plugin Name: Ali Activity Logs
-Plugin URI: https://example.com/user-activity-logger
-Description: Ghi lại các hoạt động của người dùng như đăng nhập, đăng xuất, và chỉnh sửa bài viết với thông tin chi tiết.
-Version: 2.9
+Plugin Name: Ali Security Audit Log
+Plugin URI: https://example.com/ali-security-audit-log
+Description: Ghi lại các hoạt động của người dùng cho mục đích kiểm tra bảo mật.
+Version: 3.7
 Author: Gemini
 Author URI: https://gemini.google.com
 License: GPL2
@@ -16,45 +16,52 @@ if (!defined('ABSPATH')) {
 
 /**
  * Hàm kích hoạt plugin.
- * Đăng ký loại bài viết tùy chỉnh, xóa các quy tắc viết lại và thêm quyền hạn.
+ * Đăng ký loại bài viết tùy chỉnh và xóa các quy tắc viết lại.
  */
-function ual_activate_plugin() {
-    ual_register_activity_log_post_type();
+function asal_activate_plugin() {
+    asal_register_activity_log_post_type();
     flush_rewrite_rules();
 
-    // Thêm quyền hạn 'ual_view_logs' cho vai trò Quản trị viên
-    $role = get_role('administrator');
+    // Thêm vai trò "Log View Only"
+    add_role(
+        'log_view_only',
+        'Log View Only',
+        array(
+            'read' => true,
+            'asal_view_logs' => true,
+        )
+    );
+
+    // Thêm quyền hạn 'asal_view_logs' cho vai trò "Log View Only"
+    $role = get_role('log_view_only');
     if ($role) {
-        $role->add_cap('ual_view_logs');
+        $role->add_cap('asal_view_logs');
     }
 
     // Lên lịch tác vụ dọn dẹp nhật ký hàng ngày
-    if (!wp_next_scheduled('ual_daily_log_cleanup')) {
-        wp_schedule_event(time(), 'daily', 'ual_daily_log_cleanup');
+    if (!wp_next_scheduled('asal_daily_log_cleanup')) {
+        wp_schedule_event(time(), 'daily', 'asal_daily_log_cleanup');
     }
 }
-register_activation_hook(__FILE__, 'ual_activate_plugin');
+register_activation_hook(__FILE__, 'asal_activate_plugin');
 
 /**
  * Hàm hủy kích hoạt plugin.
- * Hủy bỏ tác vụ dọn dẹp đã lên lịch.
+ * Hủy bỏ tác vụ dọn dẹp đã lên lịch và vai trò tùy chỉnh.
  */
-function ual_deactivate_plugin() {
-    wp_clear_scheduled_hook('ual_daily_log_cleanup');
+function asal_deactivate_plugin() {
+    wp_clear_scheduled_hook('asal_daily_log_cleanup');
     
-    // Xóa quyền hạn 'ual_view_logs' khỏi vai trò Quản trị viên
-    $role = get_role('administrator');
-    if ($role) {
-        $role->remove_cap('ual_view_logs');
-    }
+    // Xóa vai trò tùy chỉnh khi plugin bị hủy kích hoạt
+    remove_role('log_view_only');
 }
-register_deactivation_hook(__FILE__, 'ual_deactivate_plugin');
+register_deactivation_hook(__FILE__, 'asal_deactivate_plugin');
 
 /**
  * Hàm dọn dẹp các bản ghi cũ.
  */
-function ual_cleanup_old_logs() {
-    $retention_days = get_option('ual_log_retention_days', 0);
+function asal_cleanup_old_logs() {
+    $retention_days = get_option('asal_log_retention_days', 0);
     
     // Nếu không có ngày lưu trữ được thiết lập hoặc bằng 0, không làm gì cả.
     if (empty($retention_days) || $retention_days <= 0) {
@@ -82,12 +89,12 @@ function ual_cleanup_old_logs() {
         }
     }
 }
-add_action('ual_daily_log_cleanup', 'ual_cleanup_old_logs');
+add_action('asal_daily_log_cleanup', 'asal_cleanup_old_logs');
 
 /**
  * Đăng ký loại bài viết tùy chỉnh 'activity_log'.
  */
-function ual_register_activity_log_post_type() {
+function asal_register_activity_log_post_type() {
     $labels = array(
         'name'                  => 'Nhật ký Hoạt động',
         'singular_name'         => 'Nhật ký Hoạt động',
@@ -111,51 +118,51 @@ function ual_register_activity_log_post_type() {
 
     register_post_type('activity_log', $args);
 }
-add_action('init', 'ual_register_activity_log_post_type');
+add_action('init', 'asal_register_activity_log_post_type');
 
 /**
  * Thêm trang quản trị cho Nhật ký hoạt động.
  */
-function ual_add_admin_menu_page() {
+function asal_add_admin_menu_page() {
     // Thêm trang chính của plugin vào menu "Công cụ"
     add_menu_page(
-        'Ali Activity Logs',         // Tiêu đề trang
-        'Ali Activity Logs',         // Tên menu
-        'ual_view_logs',              // Yêu cầu quyền
-        'user-activity-logger',       // Slug của menu
-        'ual_render_admin_page',       // Hàm hiển thị nội dung trang
+        'Ali Security Audit Log',         // Tiêu đề trang
+        'Ali Security Audit Log',         // Tên menu
+        'asal_view_logs',             // Yêu cầu quyền
+        'ali-security-audit-log',      // Slug của menu
+        'asal_render_admin_page',     // Hàm hiển thị nội dung trang
         'dashicons-clipboard',
         4
     );
     
     // Thêm trang cài đặt như một menu con
     add_submenu_page(
-        'user-activity-logger',
-        'Cài đặt Ali Activity Logs',
+        'ali-security-audit-log',
+        'Cài đặt Ali Security Audit Log',
         'Cài đặt',
-        'ual_view_logs',
-        'ual-settings',
-        'ual_settings_page'
+        'manage_options',
+        'asal-settings',
+        'asal_settings_page'
     );
 }
-add_action('admin_menu', 'ual_add_admin_menu_page');
+add_action('admin_menu', 'asal_add_admin_menu_page');
 
 /**
  * Hàm hiển thị trang quản trị.
  */
-function ual_render_admin_page() {
-    if (!current_user_can('ual_view_logs')) {
+function asal_render_admin_page() {
+    if (!current_user_can('asal_view_logs')) {
         wp_die(__('Bạn không có quyền truy cập trang này.'));
     }
 
     if (!class_exists('WP_List_Table')) {
         require_once(ABSPATH . 'wp-admin/includes/class-wp-list-table.php');
     }
-    $list_table = new UAL_List_Table();
+    $list_table = new ASAL_List_Table();
     $list_table->prepare_items();
     ?>
     <div class="wrap">
-        <h2>Nhật ký Hoạt động Người dùng</h2>
+        <h2>Nhật ký Kiểm tra Bảo mật</h2>
         <form method="get">
             <input type="hidden" name="page" value="<?php echo $_REQUEST['page']; ?>" />
             <?php $list_table->display(); ?>
@@ -172,10 +179,11 @@ if (!class_exists('WP_List_Table')) {
     require_once(ABSPATH . 'wp-admin/includes/class-wp-list-table.php');
 }
 
-class UAL_List_Table extends WP_List_Table {
+class ASAL_List_Table extends WP_List_Table {
 
     function get_columns() {
         $columns = array(
+            'cb'        => '<input type="checkbox" />',
             'post_id'   => 'ID',
             'date_time' => 'Thời gian',
             'severity'  => 'Mức độ',
@@ -195,6 +203,37 @@ class UAL_List_Table extends WP_List_Table {
         );
         return $sortable_columns;
     }
+    
+    function column_cb($item) {
+        return sprintf(
+            '<input type="checkbox" name="log_id[]" value="%s" />',
+            $item['post_id']
+        );
+    }
+    
+    function get_bulk_actions() {
+        $actions = array(
+            'delete' => 'Xóa'
+        );
+        return $actions;
+    }
+    
+    function process_bulk_action() {
+        if ('delete' === $this->current_action()) {
+            if (!current_user_can('asal_view_logs')) {
+                wp_die(__('Bạn không có quyền để thực hiện hành động này.'));
+            }
+            
+            check_admin_referer('bulk-' . 'ali-security-audit-log');
+
+            $log_ids = $_REQUEST['log_id'];
+            if (is_array($log_ids)) {
+                foreach ($log_ids as $log_id) {
+                    wp_delete_post(absint($log_id), true);
+                }
+            }
+        }
+    }
 
     function column_default($item, $column_name) {
         switch ($column_name) {
@@ -205,11 +244,11 @@ class UAL_List_Table extends WP_List_Table {
             case 'severity':
                 $class = '';
                 if ($item['severity'] === 'warning') {
-                    $class = 'ual-warning';
+                    $class = 'asal-warning';
                 } elseif ($item['severity'] === 'danger') {
-                    $class = 'ual-danger';
+                    $class = 'asal-danger';
                 }
-                return '<span class="ual-severity ' . esc_attr($class) . '">' . esc_html(ucfirst($item['severity'])) . '</span>';
+                return '<span class="asal-severity ' . esc_attr($class) . '">' . esc_html(ucfirst($item['severity'])) . '</span>';
             case 'user':
                 return $item['user'];
             case 'user_ip':
@@ -226,11 +265,11 @@ class UAL_List_Table extends WP_List_Table {
 
                 if (strlen($full_message) > 100) {
                     $short_message = substr($full_message, 0, 100) . '...';
-                    $read_more_link = '<a href="#" class="ual-read-more">Xem thêm</a>';
+                    $read_more_link = '<a href="#" class="asal-read-more">Xem thêm</a>';
                 }
 
-                return '<span class="ual-truncated-message">' . esc_html($short_message) . '</span>'
-                     . '<span class="ual-full-message" style="display:none;">' . esc_html($full_message) . '</span>'
+                return '<span class="asal-truncated-message">' . esc_html($short_message) . '</span>'
+                     . '<span class="asal-full-message" style="display:none;">' . esc_html($full_message) . '</span>'
                      . $read_more_link;
             default:
                 return print_r($item, true);
@@ -248,9 +287,11 @@ class UAL_List_Table extends WP_List_Table {
                 'Đăng nhập'          => 'Đăng nhập',
                 'Đăng xuất'          => 'Đăng xuất',
                 'Tạo mới post'       => 'Tạo mới bài viết',
-                'Tạo mới page'       => 'Tạo mới trang',
                 'Chỉnh sửa post'     => 'Chỉnh sửa bài viết',
+                'Tạo mới page'       => 'Tạo mới trang',
                 'Chỉnh sửa page'     => 'Chỉnh sửa trang',
+                'Tạo mới product'    => 'Tạo mới sản phẩm',
+                'Chỉnh sửa product'  => 'Chỉnh sửa sản phẩm',
                 'Thay đổi cài đặt'   => 'Thay đổi cài đặt'
             );
             $severities = array(
@@ -261,30 +302,30 @@ class UAL_List_Table extends WP_List_Table {
             
             ?>
             <div class="alignleft actions">
-                <select name="ual_user_filter" id="ual_user_filter">
+                <select name="asal_user_filter" id="asal_user_filter">
                     <option value="">Tất cả Người dùng</option>
                     <?php
-                    $current_user = isset($_GET['ual_user_filter']) ? $_GET['ual_user_filter'] : '';
+                    $current_user = isset($_GET['asal_user_filter']) ? $_GET['asal_user_filter'] : '';
                     foreach ($users as $user) {
                         echo '<option value="' . esc_attr($user->ID) . '"' . selected($current_user, $user->ID) . '>' . esc_html($user->user_login) . '</option>';
                     }
                     ?>
                 </select>
 
-                <select name="ual_event_type_filter" id="ual_event_type_filter">
+                <select name="asal_event_type_filter" id="asal_event_type_filter">
                     <option value="">Tất cả Sự kiện</option>
                     <?php
-                    $current_event = isset($_GET['ual_event_type_filter']) ? $_GET['ual_event_type_filter'] : '';
+                    $current_event = isset($_GET['asal_event_type_filter']) ? $_GET['asal_event_type_filter'] : '';
                     foreach ($logged_event_types as $key => $value) {
                         echo '<option value="' . esc_attr($key) . '"' . selected($current_event, $key) . '>' . esc_html($value) . '</option>';
                     }
                     ?>
                 </select>
 
-                <select name="ual_severity_filter" id="ual_severity_filter">
+                <select name="asal_severity_filter" id="asal_severity_filter">
                     <option value="">Tất cả Mức độ</option>
                     <?php
-                    $current_severity = isset($_GET['ual_severity_filter']) ? $_GET['ual_severity_filter'] : '';
+                    $current_severity = isset($_GET['asal_severity_filter']) ? $_GET['asal_severity_filter'] : '';
                     foreach ($severities as $key => $value) {
                         echo '<option value="' . esc_attr($key) . '"' . selected($current_severity, $key) . '>' . esc_html($value) . '</option>';
                     }
@@ -298,6 +339,8 @@ class UAL_List_Table extends WP_List_Table {
     }
 
     function prepare_items() {
+        $this->process_bulk_action();
+
         $per_page = 20;
         $columns = $this->get_columns();
         $hidden = array();
@@ -319,28 +362,28 @@ class UAL_List_Table extends WP_List_Table {
         $meta_query = array();
 
         // Xử lý bộ lọc người dùng
-        if (isset($_GET['ual_user_filter']) && !empty($_GET['ual_user_filter'])) {
+        if (isset($_GET['asal_user_filter']) && !empty($_GET['asal_user_filter'])) {
             $meta_query[] = array(
-                'key'     => '_ual_user_id',
-                'value'   => sanitize_text_field($_GET['ual_user_filter']),
+                'key'     => '_asal_user_id',
+                'value'   => sanitize_text_field($_GET['asal_user_filter']),
                 'compare' => '=',
             );
         }
 
         // Xử lý bộ lọc loại sự kiện
-        if (isset($_GET['ual_event_type_filter']) && !empty($_GET['ual_event_type_filter'])) {
+        if (isset($_GET['asal_event_type_filter']) && !empty($_GET['asal_event_type_filter'])) {
             $meta_query[] = array(
-                'key'     => '_ual_event_type',
-                'value'   => sanitize_text_field($_GET['ual_event_type_filter']),
+                'key'     => '_asal_event_type',
+                'value'   => sanitize_text_field($_GET['asal_event_type_filter']),
                 'compare' => '=',
             );
         }
 
         // Xử lý bộ lọc mức độ nghiêm trọng
-        if (isset($_GET['ual_severity_filter']) && !empty($_GET['ual_severity_filter'])) {
+        if (isset($_GET['asal_severity_filter']) && !empty($_GET['asal_severity_filter'])) {
             $meta_query[] = array(
-                'key'     => '_ual_severity',
-                'value'   => sanitize_text_field($_GET['ual_severity_filter']),
+                'key'     => '_asal_severity',
+                'value'   => sanitize_text_field($_GET['asal_severity_filter']),
                 'compare' => '=',
             );
         }
@@ -355,19 +398,19 @@ class UAL_List_Table extends WP_List_Table {
 
         $data = array();
         foreach ($posts as $post) {
-            $user_id = get_post_meta($post->ID, '_ual_user_id', true);
+            $user_id = get_post_meta($post->ID, '_asal_user_id', true);
             $user_info = get_userdata($user_id);
             $user_name = $user_info ? $user_info->user_login : 'Người dùng không xác định';
 
             $data[] = array(
                 'post_id'    => $post->ID,
                 'date_time'  => $post->post_date,
-                'severity'   => get_post_meta($post->ID, '_ual_severity', true),
+                'severity'   => get_post_meta($post->ID, '_asal_severity', true),
                 'user'       => $user_name,
-                'user_ip'    => get_post_meta($post->ID, '_ual_user_ip', true),
-                'event'      => get_post_meta($post->ID, '_ual_event_type', true),
-                'object'     => get_post_meta($post->ID, '_ual_object_name', true),
-                'message'    => get_post_meta($post->ID, '_ual_message', true)
+                'user_ip'    => get_post_meta($post->ID, '_asal_user_ip', true),
+                'event'      => get_post_meta($post->ID, '_asal_event_type', true),
+                'object'     => get_post_meta($post->ID, '_asal_object_name', true),
+                'message'    => get_post_meta($post->ID, '_asal_message', true)
             );
         }
 
@@ -390,9 +433,9 @@ class UAL_List_Table extends WP_List_Table {
  * @param string $severity Mức độ nghiêm trọng ('info', 'warning', 'danger').
  * @param string $object_name Tên đối tượng liên quan (ví dụ: tên bài viết).
  */
-function ual_log_activity($event_type, $message, $user_id, $severity = 'info', $object_name = '') {
+function asal_log_activity($event_type, $message, $user_id, $severity = 'info', $object_name = '') {
     // Chỉ ghi nhật ký nếu tùy chọn đã được bật
-    if (get_option('ual_logging_enabled', true) != '1') {
+    if (get_option('asal_logging_enabled', true) != '1') {
         return;
     }
 
@@ -402,7 +445,7 @@ function ual_log_activity($event_type, $message, $user_id, $severity = 'info', $
     }
     
     // Tránh ghi nhật ký các bản nháp tự động hoặc sự kiện log của chính plugin
-    if (strpos($event_type, 'ual') === 0 || strpos($object_name, 'ual') === 0) {
+    if (strpos($event_type, 'asal') === 0 || strpos($object_name, 'asal') === 0) {
         return;
     }
 
@@ -426,12 +469,12 @@ function ual_log_activity($event_type, $message, $user_id, $severity = 'info', $
 
     // Lưu các trường tùy chỉnh vào Post Meta
     if ($log_id) {
-        update_post_meta($log_id, '_ual_user_id', $user_id);
-        update_post_meta($log_id, '_ual_user_ip', $user_ip);
-        update_post_meta($log_id, '_ual_event_type', $event_type);
-        update_post_meta($log_id, '_ual_severity', $severity);
-        update_post_meta($log_id, '_ual_object_name', $object_name);
-        update_post_meta($log_id, '_ual_message', $message);
+        update_post_meta($log_id, '_asal_user_id', $user_id);
+        update_post_meta($log_id, '_asal_user_ip', $user_ip);
+        update_post_meta($log_id, '_asal_event_type', $event_type);
+        update_post_meta($log_id, '_asal_severity', $severity);
+        update_post_meta($log_id, '_asal_object_name', $object_name);
+        update_post_meta($log_id, '_asal_message', $message);
     }
 }
 
@@ -439,32 +482,32 @@ function ual_log_activity($event_type, $message, $user_id, $severity = 'info', $
  * Ghi lại hành động đăng nhập của người dùng.
  * Được kích hoạt bởi hook 'wp_login'.
  */
-function ual_log_user_login($user_login, $user) {
+function asal_log_user_login($user_login, $user) {
     $message = sprintf('Người dùng "%s" đã đăng nhập thành công.', $user_login);
-    ual_log_activity('Đăng nhập', $message, $user->ID, 'info', $user_login);
+    asal_log_activity('Đăng nhập', $message, $user->ID, 'info', $user_login);
 }
-add_action('wp_login', 'ual_log_user_login', 10, 2);
+add_action('wp_login', 'asal_log_user_login', 10, 2);
 
 /**
  * Ghi lại hành động đăng xuất của người dùng.
  * Được kích hoạt bởi hook 'wp_logout'.
  */
-function ual_log_user_logout() {
+function asal_log_user_logout() {
     $user_id = get_current_user_id();
     if ($user_id) {
         $user_info = get_userdata($user_id);
         $user_name = $user_info ? $user_info->user_login : 'Người dùng không xác định';
         $message = sprintf('Người dùng "%s" đã đăng xuất.', $user_name);
-        ual_log_activity('Đăng xuất', $message, $user_id, 'info', $user_name);
+        asal_log_activity('Đăng xuất', $message, $user_id, 'info', $user_name);
     }
 }
-add_action('wp_logout', 'ual_log_user_logout');
+add_action('wp_logout', 'asal_log_user_logout');
 
 /**
  * Ghi lại hành động chỉnh sửa bài viết/trang.
  * Được kích hoạt bởi hook 'post_updated'.
  */
-function ual_log_post_edit($post_id, $post_after, $post_before) {
+function asal_log_post_edit($post_id, $post_after, $post_before) {
     $user_id = get_current_user_id();
     if (empty($user_id)) {
         return;
@@ -502,14 +545,43 @@ function ual_log_post_edit($post_id, $post_after, $post_before) {
         $message = sprintf('Người dùng đã chỉnh sửa %s "%s".', $post_type, $object_name);
     }
 
-    ual_log_activity($action, $message, $user_id, $severity, $object_name);
+    asal_log_activity($action, $message, $user_id, $severity, $object_name);
 }
-add_action('post_updated', 'ual_log_post_edit', 10, 3);
+add_action('post_updated', 'asal_log_post_edit', 10, 3);
+
+/**
+ * Ghi lại hành động chỉnh sửa sản phẩm.
+ * Được kích hoạt bởi hook 'save_post'.
+ */
+function asal_log_product_activity($post_id, $post, $update) {
+    // Chỉ xử lý cho loại bài viết 'product'
+    if ($post->post_type !== 'product') {
+        return;
+    }
+
+    // Bỏ qua các bản nháp tự động
+    if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+        return;
+    }
+    
+    $user_id = get_current_user_id();
+    if (empty($user_id)) {
+        return;
+    }
+
+    $product_name = get_the_title($post_id);
+    $action = $update ? 'Chỉnh sửa product' : 'Tạo mới product';
+    $message = $update ? sprintf('Người dùng đã chỉnh sửa sản phẩm "%s".', $product_name) : sprintf('Người dùng đã tạo mới sản phẩm "%s".', $product_name);
+    
+    asal_log_activity($action, $message, $user_id, 'info', $product_name);
+}
+add_action('save_post', 'asal_log_product_activity', 10, 3);
+
 
 /**
  * Ghi lại các thay đổi cài đặt hệ thống.
  */
-function ual_log_option_update($option, $old_value, $new_value) {
+function asal_log_option_update($option, $old_value, $new_value) {
     $user_id = get_current_user_id();
     if (empty($user_id) || $old_value === $new_value) {
         return;
@@ -519,84 +591,221 @@ function ual_log_option_update($option, $old_value, $new_value) {
     $event_type = 'Thay đổi cài đặt';
     $message = sprintf('Tùy chọn "%s" đã được thay đổi. Giá trị cũ: "%s", Giá trị mới: "%s".', $option, print_r($old_value, true), print_r($new_value, true));
     
-    ual_log_activity($event_type, $message, $user_id, 'info', $object_name);
+    asal_log_activity($event_type, $message, $user_id, 'info', $object_name);
 }
-add_action('updated_option', 'ual_log_option_update', 10, 3);
+add_action('updated_option', 'asal_log_option_update', 10, 3);
+
+/**
+ * Xử lý yêu cầu gán vai trò người dùng
+ */
+function asal_handle_assign_role() {
+    if (isset($_POST['asal_assign_role_submit']) && current_user_can('manage_options')) {
+        check_admin_referer('asal_assign_role_nonce');
+
+        $user_id = absint($_POST['asal_select_user']);
+        $user_info = get_userdata($user_id);
+
+        if ($user_info && !in_array('log_view_only', $user_info->roles)) {
+            $user_info->add_role('log_view_only');
+            // Thêm thông báo thành công
+            add_settings_error('asal_settings_group', 'asal_user_added', 'Đã thêm người dùng vào vai trò "Log View Only" thành công.', 'success');
+        } else {
+            // Thêm thông báo lỗi
+            add_settings_error('asal_settings_group', 'asal_user_exists', 'Người dùng đã có vai trò này hoặc không hợp lệ.', 'error');
+        }
+    }
+}
+add_action('admin_init', 'asal_handle_assign_role');
+
+/**
+ * Xử lý yêu cầu xóa vai trò người dùng
+ */
+function asal_handle_remove_role() {
+    if (isset($_POST['asal_remove_role_submit']) && current_user_can('manage_options')) {
+        check_admin_referer('asal_remove_role_nonce');
+
+        $user_id = absint($_POST['asal_user_id_to_remove']);
+        $user_info = get_userdata($user_id);
+
+        if ($user_info && in_array('log_view_only', $user_info->roles)) {
+            $user_info->remove_role('log_view_only');
+            add_settings_error('asal_settings_group', 'asal_user_removed', 'Đã xóa người dùng khỏi vai trò "Log View Only" thành công.', 'success');
+        } else {
+            add_settings_error('asal_settings_group', 'asal_user_not_found', 'Người dùng không có vai trò này hoặc không hợp lệ.', 'error');
+        }
+    }
+}
+add_action('admin_init', 'asal_handle_remove_role');
 
 /**
  * Đăng ký các tùy chọn cài đặt plugin.
  */
-function ual_settings_init() {
-    register_setting('ual_settings_group', 'ual_logging_enabled', array(
+function asal_settings_init() {
+    register_setting('asal_settings_group', 'asal_logging_enabled', array(
         'type' => 'boolean',
         'default' => true,
         'sanitize_callback' => 'rest_sanitize_boolean'
     ));
     
-    register_setting('ual_settings_group', 'ual_log_retention_days', array(
+    register_setting('asal_settings_group', 'asal_log_retention_days', array(
         'type' => 'integer',
         'default' => 30,
         'sanitize_callback' => 'absint'
     ));
 
     add_settings_section(
-        'ual_main_settings_section',
+        'asal_main_settings_section',
         'Tùy chọn chung',
         null,
-        'ual-settings'
-    );
-
-    add_settings_field(
-        'ual_logging_enabled_field',
-        'Bật ghi nhật ký',
-        'ual_logging_enabled_callback',
-        'ual-settings',
-        'ual_main_settings_section'
+        'asal-settings'
     );
     
     add_settings_field(
-        'ual_log_retention_days_field',
+        'asal_logging_enabled_field',
+        'Bật ghi nhật ký',
+        'asal_logging_enabled_callback',
+        'asal-settings',
+        'asal_main_settings_section'
+    );
+    
+    add_settings_field(
+        'asal_log_retention_days_field',
         'Thời gian lưu nhật ký (ngày)',
-        'ual_log_retention_days_callback',
-        'ual-settings',
-        'ual_main_settings_section'
+        'asal_log_retention_days_callback',
+        'asal-settings',
+        'asal_main_settings_section'
+    );
+    
+    add_settings_field(
+        'asal_log_view_users_field',
+        'Người dùng có quyền xem log',
+        'asal_log_view_users_callback',
+        'asal-settings',
+        'asal_main_settings_section'
+    );
+
+    add_settings_section(
+        'asal_role_management_section',
+        'Quản lý vai trò "Log View Only"',
+        null,
+        'asal-settings'
+    );
+    
+    add_settings_field(
+        'asal_assign_log_role_field',
+        'Thêm người dùng vào vai trò',
+        'asal_assign_log_role_callback',
+        'asal-settings',
+        'asal_role_management_section'
     );
 }
-add_action('admin_init', 'ual_settings_init');
+add_action('admin_init', 'asal_settings_init');
 
 /**
  * Hàm callback để hiển thị trường checkbox.
  */
-function ual_logging_enabled_callback() {
-    $is_enabled = get_option('ual_logging_enabled', true);
-    echo '<label for="ual_logging_enabled_field">';
-    echo '<input type="checkbox" name="ual_logging_enabled" id="ual_logging_enabled_field" value="1" ' . checked(true, $is_enabled, false) . ' />';
+function asal_logging_enabled_callback() {
+    $is_enabled = get_option('asal_logging_enabled', true);
+    echo '<label for="asal_logging_enabled_field">';
+    echo '<input type="checkbox" name="asal_logging_enabled" id="asal_logging_enabled_field" value="1" ' . checked(true, $is_enabled, false) . ' />';
     echo 'Bật chức năng ghi nhật ký hoạt động của người dùng.</label>';
 }
 
 /**
  * Hàm callback để hiển thị trường nhập số ngày.
  */
-function ual_log_retention_days_callback() {
-    $days = get_option('ual_log_retention_days', 30);
-    echo '<input type="number" name="ual_log_retention_days" id="ual_log_retention_days_field" value="' . esc_attr($days) . '" min="0" step="1" />';
+function asal_log_retention_days_callback() {
+    $days = get_option('asal_log_retention_days', 30);
+    echo '<input type="number" name="asal_log_retention_days" id="asal_log_retention_days_field" value="' . esc_attr($days) . '" min="0" step="1" />';
     echo '<p class="description">Số ngày để lưu trữ nhật ký. Sau thời gian này, các bản ghi cũ sẽ tự động bị xóa. Nhập 0 để lưu trữ vĩnh viễn.</p>';
+}
+
+/**
+ * Hàm callback để hiển thị danh sách người dùng có quyền xem log.
+ */
+function asal_log_view_users_callback() {
+    $args = array(
+        'role' => 'log_view_only',
+        'orderby' => 'user_login',
+        'order' => 'ASC'
+    );
+    $users = get_users($args);
+
+    if (empty($users)) {
+        echo '<p>Chưa có người dùng nào được gán vai trò "Log View Only".</p>';
+    } else {
+        echo '<table class="wp-list-table widefat striped">';
+        echo '<thead>';
+        echo '<tr>';
+        echo '<th class="manage-column">Tên đăng nhập</th>';
+        echo '<th class="manage-column">Tên đầy đủ</th>';
+        echo '<th class="manage-column">Hành động</th>';
+        echo '</tr>';
+        echo '</thead>';
+        echo '<tbody>';
+        foreach ($users as $user) {
+            echo '<tr>';
+            echo '<td>' . esc_html($user->user_login) . '</td>';
+            echo '<td>' . esc_html($user->display_name) . '</td>';
+            echo '<td>';
+            echo '<form method="post" style="display:inline;">';
+            settings_fields('asal_settings_group');
+            wp_nonce_field('asal_remove_role_nonce');
+            echo '<input type="hidden" name="asal_user_id_to_remove" value="' . esc_attr($user->ID) . '">';
+            echo '<input type="submit" name="asal_remove_role_submit" value="Xóa" class="button button-secondary button-small" onclick="return confirm(\'Bạn có chắc chắn muốn xóa người dùng này khỏi vai trò không?\');">';
+            echo '</form>';
+            echo '</td>';
+            echo '</tr>';
+        }
+        echo '</tbody>';
+        echo '</table>';
+    }
+}
+
+/**
+ * Hàm callback để hiển thị form thêm người dùng vào vai trò
+ */
+function asal_assign_log_role_callback() {
+    // Lấy tất cả người dùng trừ những người đã có vai trò log_view_only
+    $users = get_users(array(
+        'role__not_in' => array('log_view_only'),
+        'orderby' => 'user_login',
+        'order' => 'ASC'
+    ));
+
+    if (empty($users)) {
+        echo '<p>Tất cả người dùng đều đã có vai trò này hoặc không có người dùng nào để gán.</p>';
+        return;
+    }
+    
+    echo '<form method="post" action="' . esc_url(admin_url('options.php')) . '">';
+    settings_fields('asal_settings_group');
+    echo '<select name="asal_select_user" id="asal_select_user">';
+    foreach ($users as $user) {
+        echo '<option value="' . esc_attr($user->ID) . '">' . esc_html($user->user_login) . '</option>';
+    }
+    echo '</select>';
+    echo ' ';
+    submit_button('Gán quyền', 'primary', 'asal_assign_role_submit', false);
+    wp_nonce_field('asal_assign_role_nonce');
+    echo '</form>';
 }
 
 /**
  * Hàm hiển thị trang cài đặt.
  */
-function ual_settings_page() {
-    if (!current_user_can('ual_view_logs')) {
+function asal_settings_page() {
+    if (!current_user_can('manage_options')) {
         wp_die(__('Bạn không có quyền truy cập trang này.'));
     }
     ?>
     <div class="wrap">
-        <h2>Cài đặt Ali Activity Logs</h2>
+        <h2>Cài đặt Ali Security Audit Log</h2>
+        <?php settings_errors(); ?>
         <form action="options.php" method="post">
             <?php
-            settings_fields('ual_settings_group');
-            do_settings_sections('ual-settings');
+            settings_fields('asal_settings_group');
+            do_settings_sections('asal-settings');
             submit_button('Lưu Thay Đổi');
             ?>
         </form>
@@ -605,29 +814,29 @@ function ual_settings_page() {
 }
 
 // Thêm CSS và JavaScript để định dạng bảng và xử lý sự kiện
-function ual_add_admin_assets() {
+function asal_add_admin_assets() {
     ?>
     <style>
-        .ual-list-table {
+        .asal-list-table {
             width: 100%;
         }
-        .ual-severity {
+        .asal-severity {
             font-weight: bold;
             text-transform: uppercase;
         }
-        .ual-severity.ual-warning {
+        .asal-severity.asal-warning {
             color: #FFA500;
         }
-        .ual-severity.ual-danger {
+        .asal-severity.asal-danger {
             color: #ff0000;
         }
-        .ual-truncated-message, .ual-read-more {
+        .asal-truncated-message, .asal-read-more {
             display: inline;
         }
-        .ual-full-message {
+        .asal-full-message {
             display: none;
         }
-        .ual-read-more, .ual-hide-message {
+        .asal-read-more, .asal-hide-message {
             cursor: pointer;
             color: #0073aa;
             text-decoration: underline;
@@ -641,12 +850,12 @@ function ual_add_admin_assets() {
             if (table) {
                 table.addEventListener('click', function(event) {
                     const target = event.target;
-                    if (target.classList.contains('ual-read-more')) {
+                    if (target.classList.contains('asal-read-more')) {
                         event.preventDefault();
                         const row = target.closest('td');
                         if (row) {
-                            const truncatedSpan = row.querySelector('.ual-truncated-message');
-                            const fullSpan = row.querySelector('.ual-full-message');
+                            const truncatedSpan = row.querySelector('.asal-truncated-message');
+                            const fullSpan = row.querySelector('.asal-full-message');
                             
                             if (fullSpan.style.display === 'none') {
                                 truncatedSpan.style.display = 'none';
@@ -665,4 +874,99 @@ function ual_add_admin_assets() {
     </script>
     <?php
 }
-add_action('admin_head', 'ual_add_admin_assets');
+add_action('admin_head', 'asal_add_admin_assets');
+
+/**
+ * Thêm shortcode để hiển thị log trên front-end
+ */
+function asal_add_front_end_shortcode() {
+    add_shortcode('ali_security_audit_log', 'asal_render_front_end_logs');
+}
+add_action('init', 'asal_add_front_end_shortcode');
+
+/**
+ * Hàm hiển thị log trên front-end
+ */
+function asal_render_front_end_logs() {
+    ob_start();
+
+    // Kiểm tra quyền của người dùng
+    if (!is_user_logged_in()) {
+        echo '<p>Bạn cần đăng nhập để xem nhật ký hoạt động. Vui lòng <a href="' . wp_login_url() . '">Đăng nhập</a>.</p>';
+        return ob_get_clean();
+    }
+
+    if (!current_user_can('asal_view_logs')) {
+        echo '<p>Bạn không có quyền truy cập vào nhật ký hoạt động này.</p>';
+        return ob_get_clean();
+    }
+
+    // Lấy dữ liệu nhật ký
+    $args = array(
+        'post_type'      => 'activity_log',
+        'post_status'    => 'publish',
+        'posts_per_page' => 50, // Giới hạn số lượng bản ghi hiển thị
+        'orderby'        => 'date',
+        'order'          => 'DESC'
+    );
+    $query = new WP_Query($args);
+    $logs = $query->posts;
+
+    if (empty($logs)) {
+        echo '<p>Không có bản ghi nhật ký nào.</p>';
+        return ob_get_clean();
+    }
+
+    ?>
+    <style>
+        .asal-log-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: Arial, sans-serif;
+            margin-top: 20px;
+        }
+        .asal-log-table th, .asal-log-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .asal-log-table th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .asal-log-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+    </style>
+    <h3>Nhật ký Hoạt động</h3>
+    <table class="asal-log-table">
+        <thead>
+            <tr>
+                <th>Thời gian</th>
+                <th>Mức độ</th>
+                <th>Người dùng</th>
+                <th>Sự kiện</th>
+                <th>Đối tượng</th>
+                <th>Tin nhắn</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($logs as $log) : 
+                $user_id = get_post_meta($log->ID, '_asal_user_id', true);
+                $user_info = get_userdata($user_id);
+                $user_name = $user_info ? $user_info->user_login : 'Người dùng không xác định';
+            ?>
+                <tr>
+                    <td><?php echo date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($log->post_date)); ?></td>
+                    <td><?php echo esc_html(ucfirst(get_post_meta($log->ID, '_asal_severity', true))); ?></td>
+                    <td><?php echo esc_html($user_name); ?></td>
+                    <td><?php echo esc_html(get_post_meta($log->ID, '_asal_event_type', true)); ?></td>
+                    <td><?php echo esc_html(get_post_meta($log->ID, '_asal_object_name', true)); ?></td>
+                    <td><?php echo esc_html(get_post_meta($log->ID, '_asal_message', true)); ?></td>
+                </tr>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+    <?php
+    return ob_get_clean();
+}
