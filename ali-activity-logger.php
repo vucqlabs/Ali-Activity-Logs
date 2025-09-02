@@ -3,9 +3,9 @@
 Plugin Name: Ali Activity Logs
 Plugin URI: https://example.com/user-activity-logger
 Description: Ghi lại các hoạt động của người dùng như đăng nhập, đăng xuất, và chỉnh sửa bài viết với thông tin chi tiết.
-Version: 2.2
+Version: 2.4
 Author: Ali
-Author URI: https://gemini.google.com
+Author URI: https://vucao.org
 License: GPL2
 */
 
@@ -57,17 +57,16 @@ add_action('init', 'ual_register_activity_log_post_type');
  * Thêm trang quản trị cho Nhật ký hoạt động.
  */
 function ual_add_admin_menu_page() {
-    add_menu_page(
+    // Thêm trang chính của plugin vào menu "Công cụ"
+    add_management_page(
         'Ali Activity Logs',         // Tiêu đề trang
         'Ali Activity Logs',         // Tên menu
         'manage_options',             // Yêu cầu quyền
         'user-activity-logger',       // Slug của menu
-        'ual_render_admin_page',      // Hàm hiển thị nội dung trang
-        'dashicons-clipboard',        // Icon menu
-        80                            // Vị trí menu
+        'ual_render_admin_page'       // Hàm hiển thị nội dung trang
     );
     
-    // Thêm trang cài đặt
+    // Thêm trang cài đặt như một menu con
     add_submenu_page(
         'user-activity-logger',
         'Cài đặt Ali Activity Logs',
@@ -90,7 +89,7 @@ function ual_render_admin_page() {
     $list_table->prepare_items();
     ?>
     <div class="wrap">
-        <h2>User Activity Logs</h2>
+        <h2>Nhật ký Hoạt động Người dùng</h2>
         <form method="post">
             <input type="hidden" name="page" value="<?php echo $_REQUEST['page']; ?>" />
             <?php $list_table->display(); ?>
@@ -330,6 +329,23 @@ function ual_log_post_edit($post_id, $post_after, $post_before) {
     ual_log_activity($action, $message, $user_id, $severity, $object_name);
 }
 add_action('post_updated', 'ual_log_post_edit', 10, 3);
+
+/**
+ * Ghi lại các thay đổi cài đặt hệ thống.
+ */
+function ual_log_option_update($option, $old_value, $new_value) {
+    $user_id = get_current_user_id();
+    if (empty($user_id) || $old_value === $new_value) {
+        return;
+    }
+
+    $object_name = $option;
+    $event_type = 'Thay đổi cài đặt';
+    $message = sprintf('Tùy chọn "%s" đã được thay đổi. Giá trị cũ: "%s", Giá trị mới: "%s".', $option, print_r($old_value, true), print_r($new_value, true));
+    
+    ual_log_activity($event_type, $message, $user_id, 'info', $object_name);
+}
+add_action('updated_option', 'ual_log_option_update', 10, 3);
 
 /**
  * Đăng ký các tùy chọn cài đặt plugin.
